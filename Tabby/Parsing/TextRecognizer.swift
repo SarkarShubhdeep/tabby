@@ -8,7 +8,7 @@ enum TextRecognizer {
         try await Task.detached(priority: .userInitiated) {
             var rows: [String] = []
             for image in images {
-                let found = try fragments(in: image)
+                let found = try TextRecognizer.fragments(in: image)
                 rows += ReceiptParser.rows(from: found)
             }
             return rows
