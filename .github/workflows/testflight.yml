@@ -1,0 +1,70 @@
+name: TestFlight
+
+# Builds, signs and uploads Tabby to TestFlight. Run it from the Actions tab
+# ("Run workflow") or by pushing a tag like v1.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  upload:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Check secrets
+        run: |
+          echo "KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/Tabby.xcarchive" >> "$GITHUB_ENV"
+          for name in ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID; do
+            [ -n "${!name}" ] || { echo "::error::Missing repository secret $name (see README)"; exit 1; }
+          done
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          [ -n "$ASC_KEY_P8" ] || { echo "::error::Missing repository secret ASC_KEY_P8 (see README)"; exit 1; }
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY_PATH"
+
+      - name: Generate Xcode project
+        run: brew install xcodegen && xcodegen generate
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project Tabby.xcodeproj \
+            -scheme Tabby \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Upload to TestFlight
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist ci/ExportOptions.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Clean up key
+        if: always()
+        run: rm -f "$KEY_PATH"

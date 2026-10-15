@@ -1,0 +1,9 @@
+*.xcodeproj/
+Tabby/Info.plist
+build/
+DerivedData/
+*.xcarchive
+*.ipa
+*.p8
+.DS_Store
+xcuserdata/

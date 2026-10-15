@@ -15,7 +15,9 @@ The goal is a working build on **TestFlight within a few hours**. So the scope i
 1. **Home**: a large "Scan Bill" button, plus a "Choose Photo" button for receipts already in the photo library. A third button, "Enter Manually", is the fallback when OCR fails.
 2. **Scan**: uses Apple's built-in document camera (`VNDocumentCameraViewController`), which auto-crops and de-skews the receipt. "Choose Photo" uses `PhotosPicker`.
 3. **Review Items**: a native `List` of the parsed lines (`name`, `price`). The user can swipe to delete, tap to edit, or tap `+` to add a line. Subtotal, tax and tip are detected when possible and shown in their own section, where they can be edited.
-4. **People**: starts with `A`, `B` and `C`. The user can add or remove people and rename them (for example "Adele", "Bob", "Carmen"). Names are optional because the letters work as defaults.
+4. **People**: the user can add or remove people and rename them (for example "Adele", "Bob", "Carmen"). A "Just use A, B, C" button covers the no-names case.
+   - **Saved people**: every name used is remembered **on the device** (`UserDefaults`, no backend). The 30 most recent names appear as tap-to-add badges under "Recent". Touch and hold a badge to forget that name.
+   - People carry over to the next bill, because groups usually stay the same.
 5. **Assign**: the core screen.
    - It shows the item name and price large, plus "Item 3 of 12" and a progress bar.
    - Below that is one toggle chip per person (A, B, C…). Tapping a chip selects that person. Selecting several people splits the item evenly among them.
@@ -44,7 +46,7 @@ The goal is a working build on **TestFlight within a few hours**. So the scope i
 | Camera | `VNDocumentCameraViewController` (VisionKit) | Apple's own receipt/document scanner |
 | OCR | `VNRecognizeTextRequest` (Vision, `.accurate`) | On-device, free, no network, no API key |
 | State | One `@Observable` `BillSession` model | The app is too small for anything more |
-| Persistence | None (v1) | Bills are short-lived |
+| Persistence | `UserDefaults` for saved names only | Bills are short-lived; names are reused |
 | Dependencies | **Zero** | Nothing to vet and faster CI |
 | Project gen | **XcodeGen** (`project.yml`) | Avoids hand-editing `.pbxproj` and keeps diffs readable |
 
@@ -98,7 +100,8 @@ tabby/
 │   ├── Assets.xcassets (AppIcon, AccentColor)
 │   └── Info.plist
 ├── TabbyTests/ReceiptParserTests.swift, BillSessionTests.swift
-├── fastlane/Fastfile
+├── ci/ExportOptions.plist, ci/run-tests.sh
+├── .github/workflows/ci.yml
 └── .github/workflows/testflight.yml
 ```
 
@@ -110,16 +113,16 @@ The repo is built so that **no Mac is required**: GitHub Actions' macOS runners 
 
 1. **Apple Developer**: create the App ID `com.<you>.tabby`.
 2. **App Store Connect**: create the app record "Tabby" with that bundle ID. Apple's API can't create app records, so this step is manual.
-3. **App Store Connect**: create an API key (Users and Access → Integrations → App Store Connect API, role *App Manager*). Download the `.p8` file and note the Key ID and Issuer ID.
+3. **App Store Connect**: create an API key (Users and Access → Integrations → App Store Connect API, role *Admin*, which cloud signing needs). Download the `.p8` file and note the Key ID and Issuer ID.
 4. **GitHub**: add the repo secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (base64) and `APPLE_TEAM_ID`.
 
 **CI pipeline (`testflight.yml`)**: runs on a manual trigger or a `v*` tag.
 
 1. `brew install xcodegen` → `xcodegen generate`
 2. Run unit tests on a simulator.
-3. Fastlane `build_app` with **automatic signing via the API key** (`-allowProvisioningUpdates`). No certificate juggling or `match` repo is needed.
+3. Run `xcodebuild archive` with **automatic cloud signing via the API key** (`-allowProvisioningUpdates`). No fastlane, certificate juggling or `match` repo is needed.
 4. Set the build number to the GitHub run number.
-5. Run `upload_to_testflight`, then add yourself as an internal tester, which needs no Beta Review.
+5. Run `xcodebuild -exportArchive` with `destination: upload` to send the build straight to TestFlight. Then add yourself as an internal tester, which needs no Beta Review.
 
 **App Store and TestFlight requirements handled in the code:**
 
@@ -137,7 +140,7 @@ The repo is built so that **no Mac is required**: GitHub Actions' macOS runners 
 | Project scaffold, model, people/assign/summary screens with manual entry | 60 min |
 | Scanner and Vision OCR, parser and tests | 45 min |
 | Review screen, polish (haptics, empty states, keyboard mode) | 30 min |
-| CI workflow and Fastlane, first TestFlight upload | 30–45 min |
+| CI workflow, first TestFlight upload | 30–45 min |
 
 The app is usable even before OCR is done, because manual entry runs through the same assign flow.
 
@@ -145,8 +148,9 @@ The app is usable even before OCR is done, because manual entry runs through the
 
 History of past bills, iCloud sync, multiple currencies or locales beyond `$`/`.`, uneven splits (such as 70/30), Venmo or payment links, iPad and widgets. All of these are easy to add later.
 
-## 9. Open questions for you
+## 9. Decisions
 
-1. **Bundle ID**: is `com.sarkarshubhdeep.tabby` OK?
-2. **Build path**: GitHub Actions (no Mac needed, requires the 4 secrets above) or your own Mac with Xcode?
-3. **Minimum iOS**: 17 is assumed. Is that fine?
+- Bundle ID: `com.sarkarshubhdeep.tabby`
+- Build path: GitHub Actions (see README for the one-time setup)
+- Minimum iOS: 17
+- Saved people: stored on device, shown as tap-to-add badges
