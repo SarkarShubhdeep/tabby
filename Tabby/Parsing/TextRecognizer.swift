@@ -29,7 +29,8 @@ enum TextRecognizer {
                 var tableRows: [String] = []
                 var lineRows: [String] = []
                 for image in enhanced {
-                    let document = try await TextRecognizer.documentRows(in: image)
+                    // Optional extra: if it fails, the other strategies still run.
+                    guard let document = try? await TextRecognizer.documentRows(in: image) else { continue }
                     tableRows += document.tables
                     lineRows += document.lines
                 }
