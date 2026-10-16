@@ -103,9 +103,9 @@ struct HomeView: View {
         Task {
             defer { isReading = false }
             do {
-                let rows = try await TextRecognizer.rows(in: images)
+                let result = try await TextRecognizer.read(images)
                 session.startNewBill()
-                session.load(ReceiptParser.parse(rows: rows))
+                session.load(result)
                 router.path = [.review]
             } catch {
                 errorMessage = error.localizedDescription

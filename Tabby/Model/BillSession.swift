@@ -48,8 +48,11 @@ final class BillSession {
     var people: [Person] = []
     var tax: Decimal = 0
     var tip: Decimal = 0
-    /// Subtotal printed on the receipt, used to warn about misread lines.
+    /// Subtotal and total printed on the receipt, used to warn about misread lines.
     var receiptSubtotal: Decimal?
+    var receiptTotal: Decimal?
+    /// The text rows OCR produced, for troubleshooting.
+    var recognizedRows: [String] = []
 
     var itemsSubtotal: Decimal { items.reduce(0) { $0 + $1.price } }
     var total: Decimal { itemsSubtotal + tax + tip }
@@ -72,6 +75,8 @@ final class BillSession {
         tax = 0
         tip = 0
         receiptSubtotal = nil
+        receiptTotal = nil
+        recognizedRows = []
     }
 
     func load(_ result: ReceiptParser.Result) {
@@ -79,6 +84,19 @@ final class BillSession {
         tax = result.tax ?? 0
         tip = result.tip ?? 0
         receiptSubtotal = result.subtotal
+        receiptTotal = result.total
+        recognizedRows = result.rows
+    }
+
+    /// Explains how the items disagree with the receipt's printed totals, if they do.
+    var mismatchWarning: String? {
+        if let receipt = receiptSubtotal, receipt != itemsSubtotal {
+            return "Items add up to \(Money.format(itemsSubtotal)), but the receipt's subtotal is \(Money.format(receipt)). Check for missed or misread lines."
+        }
+        if receiptSubtotal == nil, let receipt = receiptTotal, receipt != total {
+            return "This adds up to \(Money.format(total)), but the receipt's total is \(Money.format(receipt)). Check for missed or misread lines."
+        }
+        return nil
     }
 
     // MARK: - People

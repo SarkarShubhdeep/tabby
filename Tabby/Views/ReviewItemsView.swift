@@ -4,13 +4,14 @@ struct ReviewItemsView: View {
     @Environment(BillSession.self) private var session
     @Environment(Router.self) private var router
     @FocusState private var focusedItem: UUID?
+    @State private var showRecognizedText = false
 
     private let priceFormat = Decimal.FormatStyle(locale: .current).precision(.fractionLength(2))
 
     var body: some View {
         @Bindable var session = session
         List {
-            if let warning = mismatchWarning {
+            if let warning = session.mismatchWarning {
                 Section {
                     Label(warning, systemImage: "exclamationmark.triangle.fill")
                         .font(.subheadline)
@@ -61,9 +62,17 @@ struct ReviewItemsView: View {
             }
         }
         .navigationTitle("Review Bill")
+        .sheet(isPresented: $showRecognizedText) { recognizedTextSheet }
         .scrollDismissesKeyboard(.interactively)
         .keyboardDoneButton()
         .toolbar {
+            if !session.recognizedRows.isEmpty {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button("Show Recognized Text", systemImage: "text.viewfinder") {
+                        showRecognizedText = true
+                    }
+                }
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Next") { router.path.append(.people) }
                     .disabled(session.items.isEmpty)
@@ -71,9 +80,27 @@ struct ReviewItemsView: View {
         }
     }
 
-    private var mismatchWarning: String? {
-        guard let receipt = session.receiptSubtotal, receipt != session.itemsSubtotal else { return nil }
-        return "Items add up to \(Money.format(session.itemsSubtotal)), but the receipt says \(Money.format(receipt)). Check for missed or misread lines."
+    private var recognizedTextSheet: some View {
+        let text = session.recognizedRows.joined(separator: "\n")
+        return NavigationStack {
+            ScrollView {
+                Text(text)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle("Recognized Text")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { showRecognizedText = false }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: text)
+                }
+            }
+        }
     }
 
     private func moneyRow(_ title: String, value: Binding<Decimal>) -> some View {
