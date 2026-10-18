@@ -5,15 +5,19 @@ struct SummaryView: View {
     @Environment(Router.self) private var router
     @Environment(PeopleStore.self) private var store
     @State private var copied = false
+    @State private var annotatedReceipt: UIImage?
+    @State private var isSharing = false
+    @State private var isViewingReceipt = false
 
     var body: some View {
         let shares = session.shares()
         let text = session.summaryText()
         let unassigned = session.unassignedItems.count
+        let initials = session.initials
 
         List {
             Section {
-                ForEach(shares) { share in
+                ForEach(Array(shares.enumerated()), id: \.element.id) { index, share in
                     DisclosureGroup {
                         ForEach(share.entries) { entry in
                             LabeledContent {
@@ -32,6 +36,11 @@ struct SummaryView: View {
                         }
                     } label: {
                         HStack {
+                            Text(initials[index])
+                                .font(.caption.bold())
+                                .foregroundStyle(.white)
+                                .frame(width: 26, height: 26)
+                                .background(Color(uiColor: ReceiptAnnotator.color(for: index)), in: Circle())
                             Text(share.person.name)
                                 .font(.headline)
                             Spacer()
@@ -59,6 +68,32 @@ struct SummaryView: View {
                 }
             }
 
+            if !session.receiptPages.isEmpty {
+                Section {
+                    Group {
+                        if let annotatedReceipt {
+                            Button {
+                                isViewingReceipt = true
+                            } label: {
+                                Image(uiImage: annotatedReceipt)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity, maxHeight: 360)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, minHeight: 120)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Marked-up receipt")
+                } footer: {
+                    Text("Shared along with the text. Tap to view full size.")
+                }
+            }
+
             Section("Copy text") {
                 Text(text)
                     .font(.body.monospaced())
@@ -81,11 +116,25 @@ struct SummaryView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                ShareLink(item: text) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity)
+                if let annotatedReceipt {
+                    Button {
+                        isSharing = true
+                    } label: {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .sheet(isPresented: $isSharing) {
+                        ActivityView(items: [annotatedReceipt, text])
+                            .presentationDetents([.medium, .large])
+                    }
+                } else {
+                    ShareLink(item: text) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
             .controlSize(.large)
             .padding()
@@ -102,6 +151,28 @@ struct SummaryView: View {
         .sensoryFeedback(.success, trigger: copied) { _, isCopied in isCopied }
         .onAppear {
             store.remember(session.people.map(\.name))
+        }
+        .task {
+            guard let job = session.annotationJob() else { return }
+            annotatedReceipt = await Task.detached(priority: .userInitiated) { job() }.value
+        }
+        .sheet(isPresented: $isViewingReceipt) {
+            if let annotatedReceipt {
+                NavigationStack {
+                    ScrollView {
+                        Image(uiImage: annotatedReceipt)
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .navigationTitle("Receipt")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isViewingReceipt = false }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 
@@ -16,12 +17,15 @@ struct LineItem: Identifiable, Hashable {
     var name: String
     var price: Decimal
     var assignees: Set<UUID>
+    /// Where this item is on the scanned receipt, if it came from a scan.
+    var anchor: ReceiptAnchor?
 
-    init(id: UUID = UUID(), name: String, price: Decimal, assignees: Set<UUID> = []) {
+    init(id: UUID = UUID(), name: String, price: Decimal, assignees: Set<UUID> = [], anchor: ReceiptAnchor? = nil) {
         self.id = id
         self.name = name
         self.price = price
         self.assignees = assignees
+        self.anchor = anchor
     }
 }
 
@@ -53,6 +57,8 @@ final class BillSession {
     var receiptTotal: Decimal?
     /// The text rows OCR produced, for troubleshooting.
     var recognizedRows: [String] = []
+    /// The scanned receipt, one image per page, for the annotated copy.
+    var receiptPages: [CGImage] = []
 
     var itemsSubtotal: Decimal { items.reduce(0) { $0 + $1.price } }
     var total: Decimal { itemsSubtotal + tax + tip }
@@ -77,10 +83,16 @@ final class BillSession {
         receiptSubtotal = nil
         receiptTotal = nil
         recognizedRows = []
+        receiptPages = []
+    }
+
+    func load(_ scan: TextRecognizer.Scan) {
+        load(scan.receipt)
+        receiptPages = scan.pages
     }
 
     func load(_ result: ReceiptParser.Result) {
-        items = result.items.map { LineItem(name: $0.name, price: $0.price) }
+        items = result.items.map { LineItem(name: $0.name, price: $0.price, anchor: $0.anchor) }
         tax = result.tax ?? 0
         tip = result.tip ?? 0
         receiptSubtotal = result.subtotal
@@ -156,6 +168,31 @@ final class BillSession {
                         extras: Money.decimal(cents: extras[index]))
         }
     }
+
+    /// Short labels for the annotated receipt: first letter of each name,
+    /// with more letters only where two people would otherwise clash.
+    static func initials(for names: [String]) -> [String] {
+        let trimmed = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        func label(_ name: String, length: Int) -> String {
+            guard !name.isEmpty else { return "?" }
+            let prefix = name.prefix(length)
+            return prefix.prefix(1).uppercased() + prefix.dropFirst().lowercased()
+        }
+        var result = trimmed.map { label($0, length: 1) }
+        for length in 2...4 {
+            let groups = Dictionary(grouping: result.indices) { result[$0].lowercased() }
+            let clashes = groups.values.filter { $0.count > 1 }
+            guard !clashes.isEmpty else { break }
+            for group in clashes {
+                for index in group {
+                    result[index] = label(trimmed[index], length: length)
+                }
+            }
+        }
+        return result
+    }
+
+    var initials: [String] { Self.initials(for: people.map(\.name)) }
 
     func summaryText() -> String {
         var lines = shares().map { "\($0.person.name) = \(Money.format($0.total))" }

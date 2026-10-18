@@ -10,16 +10,20 @@ enum ReceiptImageProcessor {
 
     struct Variants {
         /// Cropped, straightened, enlarged and enhanced. Best for most photos.
-        var enhanced: CGImage?
+        var enhanced: CGImage
+        /// The same crop in color, for showing and annotating. Same geometry as `enhanced`.
+        var display: CGImage
         /// The photo as taken, as a fallback when cleanup makes things worse.
-        var original: CGImage?
+        var original: CGImage
     }
 
-    static func variants(of image: UIImage) -> Variants {
-        guard let base = orientedImage(image) else { return Variants() }
-        let receipt = straightened(base) ?? base
-        return Variants(enhanced: render(enhance(upscaled(receipt))),
-                        original: render(base))
+    static func variants(of image: UIImage) -> Variants? {
+        guard let base = orientedImage(image) else { return nil }
+        let receipt = upscaled(straightened(base) ?? base)
+        guard let enhanced = render(enhance(receipt)),
+              let display = render(receipt),
+              let original = render(base) else { return nil }
+        return Variants(enhanced: enhanced, display: display, original: original)
     }
 
     // MARK: - Steps
