@@ -154,13 +154,13 @@ extension BillSession {
             return ReceiptAnnotator.Mark(anchor: anchor, people: owners)
         }
         let initials = self.initials
-        let shares = shares()
-        let people = shares.indices.map { index in
+        let personShares = self.shares()
+        let legend = personShares.indices.map { index in
             ReceiptAnnotator.Person(initial: initials[index],
-                                    name: shares[index].person.name,
-                                    amount: Money.format(shares[index].total))
+                                    name: personShares[index].person.name,
+                                    amount: Money.format(personShares[index].total))
         }
         let total = Money.format(self.total)
-        return { ReceiptAnnotator.render(pages: pages, marks: marks, people: people, total: total) }
+        return { ReceiptAnnotator.render(pages: pages, marks: marks, people: legend, total: total) }
     }
 }
