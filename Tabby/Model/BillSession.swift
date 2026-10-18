@@ -12,7 +12,7 @@ struct Person: Identifiable, Hashable {
     }
 }
 
-struct LineItem: Identifiable, Hashable {
+struct LineItem: Identifiable, Equatable {
     let id: UUID
     var name: String
     var price: Decimal
